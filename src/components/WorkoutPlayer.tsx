@@ -180,7 +180,7 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
                 className="font-black text-2xl sm:text-4xl uppercase tracking-tight"
                 style={{ color: currentZone?.color }}
               >
-                {currentZone?.label.split(' ')[0]} ({currentZone?.label.split('(')[1]?.replace(')', '')}) {currentZone?.value} {formatTime(currentInterval?.duration || 0)}
+                Z{currentZone?.label.split(' ')[0]} ({currentZone?.label.split('(')[1]?.replace(')', '')}) {currentZone?.value} {formatTime(currentInterval?.duration || 0)}
               </span>
             </div>
             

@@ -53,10 +53,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-blue-500/30">
+    <div className="h-screen flex flex-col bg-black text-zinc-100 font-sans selection:bg-blue-500/30 overflow-hidden">
       {currentView === 'list' && (
-        <div className="py-12">
-          <header className="max-w-4xl mx-auto px-4 mb-12 flex items-center gap-3">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <header className="max-w-4xl w-full mx-auto px-4 py-8 flex items-center gap-3 shrink-0">
             <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-900/20">
               <Bike size={32} className="text-white" />
             </div>
@@ -66,23 +66,27 @@ export default function App() {
             </div>
           </header>
           
-          <WorkoutList
-            workouts={workouts}
-            onSelect={handleStartWorkout}
-            onEdit={handleEditWorkout}
-            onDelete={deleteWorkout}
-            onDuplicate={duplicateWorkout}
-            onAdd={handleCreateWorkout}
-          />
+          <div className="flex-1 overflow-y-auto">
+            <WorkoutList
+              workouts={workouts}
+              onSelect={handleStartWorkout}
+              onEdit={handleEditWorkout}
+              onDelete={deleteWorkout}
+              onDuplicate={duplicateWorkout}
+              onAdd={handleCreateWorkout}
+            />
+          </div>
         </div>
       )}
 
       {currentView === 'builder' && activeWorkout && (
-        <WorkoutBuilder
-          workout={activeWorkout}
-          onSave={handleSaveWorkout}
-          onCancel={handleCancelEdit}
-        />
+        <div className="flex-1 overflow-y-auto">
+          <WorkoutBuilder
+            workout={activeWorkout}
+            onSave={handleSaveWorkout}
+            onCancel={handleCancelEdit}
+          />
+        </div>
       )}
 
       {currentView === 'player' && activeWorkout && (
@@ -91,12 +95,6 @@ export default function App() {
           onClose={handleClosePlayer}
         />
       )}
-
-      <footer className="max-w-4xl mx-auto px-4 py-12 text-center border-t border-zinc-900 mt-12">
-        <p className="text-zinc-600 text-sm">
-          Cadence Interval Timer &copy; 2026 • Designed for performance.
-        </p>
-      </footer>
     </div>
   );
 }
