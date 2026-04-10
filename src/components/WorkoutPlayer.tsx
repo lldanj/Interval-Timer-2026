@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Workout, FlattenedInterval } from '../types';
 import { useWorkoutTimer } from '../hooks/useWorkoutTimer';
 import { formatTime } from '../lib/utils';
 import { ZONES } from '../constants';
-import { Play, Pause, Square, ChevronRight, X } from 'lucide-react';
+import { Play, Pause, Square, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface WorkoutPlayerProps {
@@ -28,21 +28,89 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
     flattenedIntervals,
   } = useWorkoutTimer(workout);
 
+  const [toast, setToast] = useState<string | null>(null);
+  const [shownMilestones, setShownMilestones] = useState<Set<number>>(new Set());
+  const wakeLockRef = useRef<any>(null);
+
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && !wakeLockRef.current) {
+        try {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          wakeLockRef.current.addEventListener('release', () => {
+            wakeLockRef.current = null;
+          });
+        } catch (err) {
+          // Fail silently
+        }
+      }
+    };
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release();
+          wakeLockRef.current = null;
+        } catch (err) {
+          // Fail silently
+        }
+      }
+    };
+
+    if (isActive && !isPaused) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    const handleVisibilityChange = () => {
+      if (isActive && !isPaused && document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      releaseWakeLock();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isActive, isPaused]);
+
+  useEffect(() => {
+    const progress = (totalElapsedTime / totalDuration) * 100;
+    const milestones = [25, 50, 75, 100];
+    
+    for (const milestone of milestones) {
+      if (progress >= milestone && !shownMilestones.has(milestone)) {
+        let message = "";
+        if (milestone === 25) message = "25% completed! Keep going!";
+        else if (milestone === 50) message = "Halfway there!";
+        else if (milestone === 75) message = "75% done! Almost there!";
+        else if (milestone === 100) message = "Workout complete! Great job! 🏆";
+        
+        setToast(message);
+        setShownMilestones(prev => new Set(prev).add(milestone));
+        
+        setTimeout(() => {
+          setToast(null);
+        }, 2500);
+      }
+    }
+  }, [totalElapsedTime, totalDuration, shownMilestones]);
+
   const remainingInInterval = currentInterval ? Math.ceil(currentInterval.duration - elapsedTime) : 0;
   const intervalProgress = currentInterval ? (elapsedTime / currentInterval.duration) * 100 : 0;
   const totalProgress = (totalElapsedTime / totalDuration) * 100;
   const totalRemaining = Math.ceil(totalDuration - totalElapsedTime);
 
   const getZoneInfo = (zoneId: string) => {
-    return ZONES.find(z => z.id === zoneId) || { label: 'Unknown', value: '' };
+    return ZONES.find(z => z.id === zoneId) || { label: 'Unknown', value: '', color: '#808080' };
   };
 
   if (!isActive && !isPaused && totalElapsedTime === 0) {
     return (
       <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-6">
-        <button onClick={onClose} className="absolute top-6 right-6 p-2 text-zinc-500 hover:text-white transition-colors">
-          <X size={32} />
-        </button>
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center max-w-md w-full">
           <h2 className="text-4xl font-bold text-white mb-2">{workout.name}</h2>
           <p className="text-zinc-400 text-xl mb-12">{formatTime(totalDuration)} total duration</p>
@@ -60,22 +128,40 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
 
   const currentZone = currentInterval ? getZoneInfo(currentInterval.zone) : null;
   const nextZone = nextInterval ? getZoneInfo(nextInterval.zone) : null;
+  const currentBlock = workout.blocks.find(b => b.id === currentInterval?.blockId);
+  const currentBlockIndex = workout.blocks.findIndex(b => b.id === currentInterval?.blockId);
+  const totalBlocks = workout.blocks.length;
+  const currentRepIndex = currentInterval?.blockRepeatIndex ?? 0;
+  const totalReps = currentBlock?.repeatCount ?? 1;
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="p-6 flex justify-between items-center bg-zinc-900/50 border-b border-zinc-800">
-        <div>
-          <h2 className="text-zinc-400 font-medium uppercase tracking-widest text-sm mb-1">{workout.name}</h2>
-          <div className="flex items-center gap-2">
-            <span className="text-white font-bold text-xl">Interval {currentIntervalIndex + 1}</span>
-            <span className="text-zinc-600">/</span>
-            <span className="text-zinc-500 font-medium">{flattenedIntervals.length}</span>
-          </div>
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -100 }}
+            animate={{ opacity: 1, y: 50 }}
+            exit={{ opacity: 0, y: -100 }}
+            className="fixed top-0 left-0 right-0 z-[100] flex justify-center pointer-events-none"
+          >
+            <div className="bg-blue-600 text-white px-8 py-4 rounded-2xl shadow-2xl font-bold text-xl">
+              {toast}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header - Compact for S25 */}
+      <header className="p-4 flex flex-col items-center justify-center bg-zinc-900/50 border-b border-zinc-800 text-center">
+        <h2 className="text-zinc-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-0.5">{workout.name}</h2>
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[10px] sm:text-xs font-medium text-zinc-500">
+          <span>Block {currentBlockIndex + 1} of {totalBlocks}</span>
+          <span className="text-zinc-700">•</span>
+          <span>Rep {currentRepIndex + 1} of {totalReps}</span>
+          <span className="text-zinc-700">•</span>
+          <span>Interval {currentIntervalIndex + 1} of {flattenedIntervals.length}</span>
         </div>
-        <button onClick={onClose} className="p-2 text-zinc-500 hover:text-white transition-colors">
-          <X size={28} />
-        </button>
       </header>
 
       {/* Main Timer Area */}
@@ -88,40 +174,82 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
             exit={{ opacity: 0, y: -20 }}
             className="text-center w-full max-w-2xl flex flex-col items-center"
           >
-            <div className="mb-1 sm:mb-2">
-              <span className="text-blue-500 font-black text-3xl sm:text-5xl uppercase tracking-tight">{currentInterval?.name}</span>
-            </div>
-            {nextInterval && (
-              <div className="mb-2 sm:mb-4">
-                <span className="text-zinc-500 font-bold text-sm sm:text-xl uppercase tracking-tighter">Next: {nextInterval.name}</span>
-              </div>
-            )}
-            <div className="text-[7rem] sm:text-[12rem] md:text-[16rem] font-black text-white leading-none tracking-tighter tabular-nums mb-4 sm:mb-8">
-              {formatTime(remainingInInterval)}
+            {/* Current Zone Display */}
+            <div className="mb-2 sm:mb-4">
+              <span 
+                className="font-black text-2xl sm:text-4xl uppercase tracking-tight"
+                style={{ color: currentZone?.color }}
+              >
+                {currentZone?.label.split(' ')[0]} ({currentZone?.label.split('(')[1]?.replace(')', '')}) {currentZone?.value} {formatTime(currentInterval?.duration || 0)}
+              </span>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 w-full">
-              <div className="bg-zinc-900 rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-zinc-800 flex flex-col items-center sm:items-start">
-                <span className="text-zinc-500 font-bold uppercase tracking-widest text-[10px] sm:text-sm block mb-1 sm:mb-2">Zone</span>
-                <div className="flex flex-col items-center sm:items-start">
-                  <span className="text-white text-2xl sm:text-4xl font-black">{currentZone?.label}</span>
-                  <span className="text-zinc-400 text-sm sm:text-lg font-medium">{currentZone?.value}</span>
-                </div>
-              </div>
-              <div className="bg-zinc-900 rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-zinc-800 flex flex-col items-center sm:items-start">
-                <span className="text-zinc-500 font-bold uppercase tracking-widest text-[10px] sm:text-sm block mb-1 sm:mb-2">Cadence</span>
-                <span className="text-white text-3xl sm:text-5xl font-black">
-                  {currentInterval?.cadence}
-                  {currentInterval?.cadence !== 'Any' && <span className="text-xl sm:text-2xl text-zinc-600"> RPM</span>}
+            {/* Timer */}
+            <div className="text-[7rem] sm:text-[10rem] md:text-[14rem] font-black text-white leading-none tracking-tighter tabular-nums mb-4 sm:mb-6">
+              {formatTime(remainingInInterval)}
+            </div>
+
+            {/* Next Interval */}
+            <div className="mb-6 sm:mb-8">
+              {nextInterval ? (
+                <span className="text-zinc-500 font-bold text-lg sm:text-2xl uppercase tracking-widest">
+                  Next: Z{nextInterval.zone} ({getZoneInfo(nextInterval.zone).label.split('(')[1]?.replace(')', '')}) {getZoneInfo(nextInterval.zone).value} {formatTime(nextInterval.duration)}
                 </span>
-              </div>
+              ) : (
+                <span className="text-zinc-700 font-bold text-lg sm:text-2xl uppercase italic">Next: FINISH</span>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
 
+        {/* Workout Zone Profile Graph */}
+        <div className="w-full max-w-4xl px-4 sm:px-6 mb-6">
+          <div className="relative h-[120px] sm:h-[150px] bg-zinc-900/30 rounded-xl border border-zinc-800 overflow-hidden flex items-end">
+            {/* Y-Axis Labels */}
+            <div className="absolute left-2 top-0 bottom-0 flex flex-col justify-between py-2 text-[10px] font-bold text-zinc-600 pointer-events-none z-10">
+              <span>Z7</span>
+              <span>Z6</span>
+              <span>Z5</span>
+              <span>Z4</span>
+              <span>Z3</span>
+              <span>Z2</span>
+              <span>Z1</span>
+            </div>
+
+            {/* Bars - No Gaps */}
+            <div className="flex-1 h-full flex items-end px-8">
+              {flattenedIntervals.map((interval, idx) => {
+                const zoneNum = parseInt(interval.zone);
+                const zoneColor = getZoneInfo(interval.zone).color;
+                const widthPercent = (interval.duration / totalDuration) * 100;
+                return (
+                  <div 
+                    key={idx}
+                    style={{ 
+                      width: `${widthPercent}%`, 
+                      height: `${(zoneNum / 7) * 100}%`,
+                      backgroundColor: zoneColor,
+                      opacity: idx < currentIntervalIndex ? 0.4 : 1
+                    }}
+                    className="transition-opacity duration-500"
+                  />
+                );
+              })}
+            </div>
+
+            {/* Cursor */}
+            <motion.div 
+              className="absolute top-0 bottom-0 w-0.5 bg-white z-20 shadow-[0_0_10px_rgba(255,255,255,0.8)]"
+              initial={false}
+              animate={{ left: `calc(32px + (100% - 64px) * ${totalProgress / 100})` }}
+              transition={{ duration: 0.1, ease: "linear" }}
+            />
+          </div>
+        </div>
+
         {/* Interval Progress Bar */}
-        <div className="absolute bottom-2 sm:bottom-4 left-0 w-full h-1.5 sm:h-2 px-4 sm:px-6">
-          <div className="w-full h-full bg-zinc-900 rounded-full overflow-hidden">
+        <div className="w-full max-w-4xl px-4 sm:px-6 mb-2">
+          <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden">
             <motion.div
               className="h-full bg-blue-600"
               initial={false}
@@ -133,62 +261,54 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
       </main>
 
       {/* Total Progress Bar */}
-      <div className="w-full h-1 bg-zinc-900">
-        <motion.div
-          className="h-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]"
-          initial={false}
-          animate={{ width: `${totalProgress}%` }}
-          transition={{ duration: 0.1, ease: "linear" }}
-        />
+      <div className="w-full px-4 sm:px-8 mb-4">
+        <div className="flex justify-between items-end mb-1">
+          <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Progress</span>
+          <span className="text-green-500 text-[10px] font-bold">{Math.round(totalProgress)}% complete</span>
+        </div>
+        <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]"
+            initial={false}
+            animate={{ width: `${totalProgress}%` }}
+            transition={{ duration: 0.1, ease: "linear" }}
+          />
+        </div>
       </div>
 
       {/* Footer / Controls */}
-      <footer className="p-4 sm:p-8 bg-zinc-900/80 backdrop-blur-xl border-t border-zinc-800">
-        <div className="grid grid-cols-3 items-center gap-2 sm:gap-4">
+      <footer className="p-4 sm:p-6 bg-zinc-900/80 backdrop-blur-xl border-t border-zinc-800">
+        <div className="flex items-center justify-between max-w-2xl mx-auto w-full">
           <div className="flex flex-col">
-            <span className="text-zinc-500 font-bold uppercase tracking-widest text-[8px] sm:text-xs mb-0.5 sm:mb-1">Total Remaining</span>
-            <span className="text-white text-lg sm:text-3xl font-black tabular-nums">{formatTime(totalRemaining)}</span>
+            <span className="text-zinc-500 font-bold uppercase tracking-widest text-[8px] sm:text-xs mb-0.5">Remaining</span>
+            <span className="text-white text-xl sm:text-3xl font-black tabular-nums">{formatTime(totalRemaining)}</span>
           </div>
 
-          <div className="flex items-center justify-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-4">
             <button
               onClick={stopWorkout}
-              className="p-3 sm:p-6 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full transition-all"
+              className="p-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full transition-all"
             >
-              <Square size={16} sm:size={32} className="w-4 h-4 sm:w-8 sm:h-8" fill="currentColor" />
+              <Square size={20} fill="currentColor" />
             </button>
             {isPaused ? (
               <button
                 onClick={resumeWorkout}
-                className="p-4 sm:p-8 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all shadow-xl shadow-blue-900/20"
+                className="p-5 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all shadow-xl shadow-blue-900/20"
               >
-                <Play size={24} sm:size={48} className="w-6 h-6 sm:w-12 sm:h-12" fill="currentColor" />
+                <Play size={28} fill="currentColor" />
               </button>
             ) : (
               <button
                 onClick={pauseWorkout}
-                className="p-4 sm:p-8 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full transition-all"
+                className="p-5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full transition-all"
               >
-                <Pause size={24} sm:size={48} className="w-6 h-6 sm:w-12 sm:h-12" fill="currentColor" />
+                <Pause size={28} fill="currentColor" />
               </button>
             )}
           </div>
-
-          <div className="flex flex-col items-end text-right">
-            <span className="text-zinc-500 font-bold uppercase tracking-widest text-[8px] sm:text-xs mb-0.5 sm:mb-1">Next Up</span>
-            {nextInterval ? (
-              <div className="flex flex-col items-end">
-                <span className="text-white text-xs sm:text-xl font-bold truncate max-w-[80px] sm:max-w-none">{nextInterval.name}</span>
-                <div className="hidden sm:flex items-center gap-2 text-zinc-400 text-sm">
-                  <span>{nextZone?.label}</span>
-                  <span>•</span>
-                  <span>{nextInterval.cadence}{nextInterval.cadence !== 'Any' && ' RPM'}</span>
-                </div>
-              </div>
-            ) : (
-              <span className="text-zinc-700 font-bold text-[10px] sm:text-xl uppercase italic">Finish</span>
-            )}
-          </div>
+          
+          <div className="w-20 sm:w-32" /> {/* Spacer to balance layout */}
         </div>
       </footer>
     </div>
