@@ -14,7 +14,7 @@ import { Bike } from 'lucide-react';
 type View = 'list' | 'builder' | 'player';
 
 export default function App() {
-  const { workouts, addWorkout, updateWorkout, deleteWorkout, duplicateWorkout } = useWorkouts();
+  const { workouts, addWorkout, updateWorkout, deleteWorkout, duplicateWorkout, importWorkout } = useWorkouts();
   const [currentView, setCurrentView] = useState<View>('list');
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null);
 
@@ -22,6 +22,12 @@ export default function App() {
 
   const handleCreateWorkout = () => {
     const id = addWorkout();
+    setActiveWorkoutId(id);
+    setCurrentView('builder');
+  };
+
+  const handleImportWorkout = (workoutData: Omit<Workout, 'id'>) => {
+    const id = importWorkout(workoutData);
     setActiveWorkoutId(id);
     setCurrentView('builder');
   };
@@ -74,6 +80,7 @@ export default function App() {
               onDelete={deleteWorkout}
               onDuplicate={duplicateWorkout}
               onAdd={handleCreateWorkout}
+              onImport={handleImportWorkout}
             />
           </div>
         </div>

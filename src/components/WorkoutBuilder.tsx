@@ -32,19 +32,31 @@ function BlockItem({
   updateBlock, updateInterval, deleteInterval, duplicateInterval, addInterval 
 }: BlockItemProps) {
   const controls = useDragControls();
+  
+  // Array of subtle background colors for blocks
+  const blockColors = [
+    'border-l-blue-500',
+    'border-l-emerald-500',
+    'border-l-amber-500',
+    'border-l-rose-500',
+    'border-l-purple-500',
+    'border-l-cyan-500',
+    'border-l-orange-500',
+  ];
+  const borderClass = blockColors[bIdx % blockColors.length];
 
   return (
     <Reorder.Item 
       value={block} 
       dragListener={false} 
       dragControls={controls}
-      className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden"
+      className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden touch-none"
       whileDrag={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.5)" }}
     >
       {/* Block Header */}
       <div 
         onClick={onToggle}
-        className={`p-4 flex items-center justify-between cursor-pointer transition-colors border-l-4 border-white/30 ${
+        className={`p-4 flex items-center justify-between cursor-pointer transition-colors border-l-4 ${borderClass} ${
           isExpanded ? 'bg-zinc-800 border-b border-zinc-700' : 'bg-zinc-800/50 hover:bg-zinc-800'
         }`}
       >
@@ -95,8 +107,20 @@ function BlockItem({
             <input
               type="number"
               min="1"
-              value={block.repeatCount}
-              onChange={(e) => updateBlock({ repeatCount: parseInt(e.target.value) || 1 })}
+              value={block.repeatCount || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  updateBlock({ repeatCount: 0 }); // Temporary 0 to allow blank
+                } else {
+                  updateBlock({ repeatCount: parseInt(val) || 1 });
+                }
+              }}
+              onBlur={(e) => {
+                if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                  updateBlock({ repeatCount: 1 });
+                }
+              }}
               className="bg-zinc-800 text-white w-16 px-2 py-1 rounded border border-zinc-700 focus:border-blue-500 focus:outline-none text-center font-bold"
             />
             <span className="text-zinc-400 text-sm font-medium">times</span>
@@ -367,8 +391,8 @@ export function WorkoutBuilder({ workout: initialWorkout, onSave, onCancel }: Wo
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 pb-24">
-      <header className="flex items-center gap-4 mb-8">
+    <div className="h-full flex flex-col overflow-hidden">
+      <header className="flex items-center gap-4 p-4 bg-black border-b border-zinc-800 z-10">
         <button
           onClick={onCancel}
           className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
@@ -379,55 +403,59 @@ export function WorkoutBuilder({ workout: initialWorkout, onSave, onCancel }: Wo
           type="text"
           value={workout.name}
           onChange={(e) => updateWorkoutName(e.target.value)}
-          className="bg-transparent text-3xl font-bold text-white focus:outline-none border-b border-transparent focus:border-blue-500 transition-all w-full"
+          className="bg-transparent text-2xl sm:text-3xl font-bold text-white focus:outline-none border-b border-transparent focus:border-blue-500 transition-all w-full"
           placeholder="Workout Name"
         />
         <button
           onClick={() => onSave(workout)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl transition-colors font-semibold shadow-lg shadow-blue-900/20"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl transition-colors font-semibold shadow-lg shadow-blue-900/20"
         >
           <Save size={20} />
-          <span>Save</span>
+          <span className="hidden sm:inline">Save</span>
         </button>
       </header>
 
-      <Reorder.Group 
-        axis="y" 
-        values={workout.blocks} 
-        onReorder={(newBlocks) => setWorkout({ ...workout, blocks: newBlocks })}
-        className="space-y-8"
-      >
-        {workout.blocks.map((block, bIdx) => {
-          const isExpanded = expandedBlockId === block.id;
-          const blockDuration = block.intervals.reduce((acc, i) => acc + i.duration, 0) * block.repeatCount;
-          
-          return (
-            <BlockItem 
-              key={block.id}
-              block={block}
-              bIdx={bIdx}
-              isExpanded={isExpanded}
-              blockDuration={blockDuration}
-              onToggle={() => setExpandedBlockId(isExpanded ? null : block.id)}
-              onDuplicate={() => duplicateBlock(block.id)}
-              onDelete={() => deleteBlock(block.id)}
-              updateBlock={(updates) => updateBlock(block.id, updates)}
-              updateInterval={(intervalId, updates) => updateInterval(block.id, intervalId, updates)}
-              deleteInterval={(intervalId) => deleteInterval(block.id, intervalId)}
-              duplicateInterval={(intervalId) => duplicateInterval(block.id, intervalId)}
-              addInterval={() => addInterval(block.id)}
-            />
-          );
-        })}
-      </Reorder.Group>
+      <div className="flex-1 overflow-y-auto p-4 pb-24">
+        <div className="max-w-6xl mx-auto">
+          <Reorder.Group 
+            axis="y" 
+            values={workout.blocks} 
+            onReorder={(newBlocks) => setWorkout({ ...workout, blocks: newBlocks })}
+            className="space-y-8"
+          >
+            {workout.blocks.map((block, bIdx) => {
+              const isExpanded = expandedBlockId === block.id;
+              const blockDuration = block.intervals.reduce((acc, i) => acc + i.duration, 0) * (block.repeatCount || 1);
+              
+              return (
+                <BlockItem 
+                  key={block.id}
+                  block={block}
+                  bIdx={bIdx}
+                  isExpanded={isExpanded}
+                  blockDuration={blockDuration}
+                  onToggle={() => setExpandedBlockId(isExpanded ? null : block.id)}
+                  onDuplicate={() => duplicateBlock(block.id)}
+                  onDelete={() => deleteBlock(block.id)}
+                  updateBlock={(updates) => updateBlock(block.id, updates)}
+                  updateInterval={(intervalId, updates) => updateInterval(block.id, intervalId, updates)}
+                  deleteInterval={(intervalId) => deleteInterval(block.id, intervalId)}
+                  duplicateInterval={(intervalId) => duplicateInterval(block.id, intervalId)}
+                  addInterval={() => addInterval(block.id)}
+                />
+              );
+            })}
+          </Reorder.Group>
 
-      <button
-        onClick={addBlock}
-        className="mt-8 w-full py-6 border-2 border-dashed border-zinc-800 rounded-2xl text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-all flex flex-col items-center justify-center gap-2"
-      >
-        <Plus size={32} />
-        <span className="text-lg font-semibold">Add New Block</span>
-      </button>
+          <button
+            onClick={addBlock}
+            className="mt-8 w-full py-6 border-2 border-dashed border-zinc-800 rounded-2xl text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 transition-all flex flex-col items-center justify-center gap-2"
+          >
+            <Plus size={32} />
+            <span className="text-lg font-semibold">Add New Block</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

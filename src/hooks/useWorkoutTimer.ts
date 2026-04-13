@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Workout, FlattenedInterval } from '../types';
 
 export function useWorkoutTimer(workout: Workout | null) {
@@ -36,6 +36,11 @@ export function useWorkoutTimer(workout: Workout | null) {
     setFlattenedIntervals(flattened);
   }, [workout]);
 
+  const totalDuration = useMemo(() => 
+    flattenedIntervals.reduce((acc, i) => acc + Number(i.duration), 0),
+    [flattenedIntervals]
+  );
+
   const playSound = useCallback((frequency: number, duration: number) => {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioCtx.createOscillator();
@@ -67,65 +72,88 @@ export function useWorkoutTimer(workout: Workout | null) {
     setIsPaused(false);
     lastTickRef.current = performance.now();
   };
-  const stopWorkout = () => {
+  const stopWorkout = useCallback(() => {
     setIsActive(false);
     setIsPaused(false);
-    if (timerRef.current) cancelAnimationFrame(timerRef.current);
-  };
+    if (timerRef.current) {
+      cancelAnimationFrame(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
-    if (isActive && !isPaused) {
-      const tick = (now: number) => {
-        const deltaTime = (now - lastTickRef.current) / 1000;
-        lastTickRef.current = now;
-
-        setElapsedTime(prev => {
-          const next = prev + deltaTime;
-          const currentInterval = flattenedIntervals[currentIntervalIndex];
-          
-          if (currentInterval && next >= currentInterval.duration) {
-            // Interval finished
-            if (currentIntervalIndex < flattenedIntervals.length - 1) {
-              setCurrentIntervalIndex(prevIdx => prevIdx + 1);
-              playSound(880, 0.2); // High beep for transition
-              return 0;
-            } else {
-              // Workout finished
-              stopWorkout();
-              playSound(440, 0.5); // Long beep for finish
-              return currentInterval.duration;
-            }
-          }
-          
-          // Countdown beeps for last 3 seconds
-          if (currentInterval) {
-            const remaining = currentInterval.duration - next;
-            const prevRemaining = currentInterval.duration - prev;
-            if (Math.floor(remaining) < Math.floor(prevRemaining) && remaining <= 3 && remaining > 0) {
-              playSound(440, 0.1); // Low beep for countdown
-            }
-          }
-
-          return next;
-        });
-
-        setTotalElapsedTime(prev => prev + deltaTime);
-        timerRef.current = requestAnimationFrame(tick);
-      };
-
-      timerRef.current = requestAnimationFrame(tick);
-    } else {
-      if (timerRef.current) cancelAnimationFrame(timerRef.current);
+    if (!isActive || isPaused || flattenedIntervals.length === 0) {
+      if (timerRef.current) {
+        cancelAnimationFrame(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
     }
 
-    return () => {
-      if (timerRef.current) cancelAnimationFrame(timerRef.current);
+    const tick = (now: number) => {
+      const deltaTime = (now - lastTickRef.current) / 1000;
+      lastTickRef.current = now;
+
+      setTotalElapsedTime(prevTotal => {
+        const nextTotal = Math.min(prevTotal + deltaTime, totalDuration);
+        
+        // Find current interval based on nextTotal
+        let accumulatedTime = 0;
+        let foundIndex = -1;
+        
+        for (let i = 0; i < flattenedIntervals.length; i++) {
+          const duration = Number(flattenedIntervals[i].duration);
+          if (nextTotal < accumulatedTime + duration) {
+            foundIndex = i;
+            break;
+          }
+          accumulatedTime += duration;
+        }
+
+        // If we've reached the end
+        if (foundIndex === -1 || nextTotal >= totalDuration) {
+          stopWorkout();
+          playSound(440, 0.5); // Long beep for finish
+          setCurrentIntervalIndex(flattenedIntervals.length - 1);
+          setElapsedTime(Number(flattenedIntervals[flattenedIntervals.length - 1].duration));
+          return totalDuration;
+        }
+
+        // Update current interval index if it changed
+        if (foundIndex !== currentIntervalIndex) {
+          setCurrentIntervalIndex(foundIndex);
+          playSound(880, 0.2); // High beep for transition
+        }
+
+        const currentInt = flattenedIntervals[foundIndex];
+        const currentElapsed = nextTotal - accumulatedTime;
+        
+        // Countdown beeps for last 3 seconds of current interval
+        const remaining = Number(currentInt.duration) - currentElapsed;
+        const prevRemaining = Number(currentInt.duration) - (prevTotal - accumulatedTime);
+        if (Math.floor(remaining) < Math.floor(prevRemaining) && remaining <= 3 && remaining > 0) {
+          playSound(440, 0.1); // Low beep for countdown
+        }
+
+        setElapsedTime(currentElapsed);
+        return nextTotal;
+      });
+
+      timerRef.current = requestAnimationFrame(tick);
     };
-  }, [isActive, isPaused, currentIntervalIndex, flattenedIntervals, playSound]);
+
+    timerRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (timerRef.current) {
+        cancelAnimationFrame(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isActive, isPaused, flattenedIntervals, playSound, totalDuration, stopWorkout, currentIntervalIndex]);
 
   const currentInterval = flattenedIntervals[currentIntervalIndex];
   const nextInterval = flattenedIntervals[currentIntervalIndex + 1];
-  const totalDuration = flattenedIntervals.reduce((acc, i) => acc + i.duration, 0);
 
   return {
     isActive,
@@ -143,3 +171,4 @@ export function useWorkoutTimer(workout: Workout | null) {
     flattenedIntervals,
   };
 }
+

@@ -89,11 +89,21 @@ export function useWorkouts() {
     setWorkouts([...workouts, copy]);
   };
 
+  const importWorkout = (workoutData: Omit<Workout, 'id'>) => {
+    const newWorkout: Workout = {
+      ...workoutData,
+      id: generateId(),
+    };
+    setWorkouts([...workouts, newWorkout]);
+    return newWorkout.id;
+  };
+
   return {
     workouts,
     addWorkout,
     updateWorkout,
     deleteWorkout,
     duplicateWorkout,
+    importWorkout,
   };
 }

@@ -30,6 +30,7 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
 
   const [toast, setToast] = useState<string | null>(null);
   const [shownMilestones, setShownMilestones] = useState<Set<number>>(new Set());
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
   const wakeLockRef = useRef<any>(null);
 
   useEffect(() => {
@@ -154,8 +155,8 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
 
       {/* Header - Compact for S25 */}
       <header className="p-4 flex flex-col items-center justify-center bg-zinc-900/50 border-b border-zinc-800 text-center">
-        <h2 className="text-zinc-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-0.5">{workout.name}</h2>
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-[10px] sm:text-xs font-medium text-zinc-500">
+        <h2 className="text-zinc-400 font-bold uppercase tracking-widest text-[10px] sm:text-xs mb-1">{workout.name}</h2>
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs sm:text-sm font-bold text-zinc-300">
           <span>Block {currentBlockIndex + 1} of {totalBlocks}</span>
           <span className="text-zinc-700">•</span>
           <span>Rep {currentRepIndex + 1} of {totalReps}</span>
@@ -203,25 +204,26 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
         </AnimatePresence>
 
         {/* Workout Zone Profile Graph */}
-        <div className="w-full max-w-4xl px-4 sm:px-6 mb-6">
-          <div className="relative h-[120px] sm:h-[150px] bg-zinc-900/30 rounded-xl border border-zinc-800 overflow-hidden flex items-end">
-            {/* Y-Axis Labels */}
-            <div className="absolute left-2 top-0 bottom-0 flex flex-col justify-between py-2 text-[10px] font-bold text-zinc-600 pointer-events-none z-10">
-              <span>Z7</span>
-              <span>Z6</span>
-              <span>Z5</span>
-              <span>Z4</span>
-              <span>Z3</span>
-              <span>Z2</span>
-              <span>Z1</span>
-            </div>
+        <div className="w-full max-w-4xl px-4 sm:px-6 mb-6 flex gap-2">
+          {/* Y-Axis Labels */}
+          <div className="flex flex-col justify-between py-2 text-[10px] font-bold text-zinc-600 pointer-events-none shrink-0">
+            <span>Z7</span>
+            <span>Z6</span>
+            <span>Z5</span>
+            <span>Z4</span>
+            <span>Z3</span>
+            <span>Z2</span>
+            <span>Z1</span>
+          </div>
+
+          <div className="relative flex-1 h-[120px] sm:h-[150px] bg-zinc-900/30 rounded-xl border border-zinc-800 overflow-hidden flex items-end">
 
             {/* Bars - No Gaps */}
-            <div className="flex-1 h-full flex items-end px-8">
+            <div className="flex-1 h-full flex items-end">
               {flattenedIntervals.map((interval, idx) => {
                 const zoneNum = parseInt(interval.zone);
                 const zoneColor = getZoneInfo(interval.zone).color;
-                const widthPercent = (interval.duration / totalDuration) * 100;
+                const widthPercent = (Number(interval.duration) / totalDuration) * 100;
                 return (
                   <div 
                     key={idx}
@@ -241,7 +243,7 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
             <motion.div 
               className="absolute top-0 bottom-0 w-0.5 bg-white z-20 shadow-[0_0_10px_rgba(255,255,255,0.8)]"
               initial={false}
-              animate={{ left: `calc(32px + (100% - 64px) * ${totalProgress / 100})` }}
+              animate={{ left: `${totalProgress}%` }}
               transition={{ duration: 0.1, ease: "linear" }}
             />
           </div>
@@ -286,7 +288,10 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
 
           <div className="flex items-center gap-4">
             <button
-              onClick={stopWorkout}
+              onClick={() => {
+                pauseWorkout();
+                setShowStopConfirm(true);
+              }}
               className="p-4 bg-zinc-800 hover:bg-zinc-700 text-white rounded-full transition-all"
             >
               <Square size={20} fill="currentColor" />
@@ -311,6 +316,43 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
           <div className="w-20 sm:w-32" /> {/* Spacer to balance layout */}
         </div>
       </footer>
+
+      {/* Stop Confirmation Modal */}
+      <AnimatePresence>
+        {showStopConfirm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl"
+            >
+              <h3 className="text-2xl font-bold text-white mb-4">End Workout?</h3>
+              <p className="text-zinc-400 mb-8">Are you sure you want to end the current workout?</p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    stopWorkout();
+                    onClose();
+                  }}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-bold text-lg transition-colors"
+                >
+                  Yes, End Workout
+                </button>
+                <button
+                  onClick={() => {
+                    setShowStopConfirm(false);
+                    resumeWorkout();
+                  }}
+                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-white py-4 rounded-2xl font-bold text-lg transition-colors"
+                >
+                  No, Continue
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
