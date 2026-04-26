@@ -1,8 +1,39 @@
 import React, { useRef, useState } from 'react';
 import { Workout } from '../types';
-import { Play, Edit2, Trash2, Copy, Plus, Upload } from 'lucide-react';
+import { Play, Edit2, Trash2, Copy, Plus, Upload, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseZWO } from '../lib/zwoParser';
+import { ZONES } from '../constants';
+
+function MiniWorkoutGraph({ workout }: { workout: Workout }) {
+  const flattenedIntervals = workout.blocks.flatMap(block => 
+    Array.from({ length: block.repeatCount }).flatMap(() => block.intervals)
+  );
+  const totalDuration = flattenedIntervals.reduce((acc, i) => acc + i.duration, 0);
+
+  if (totalDuration === 0) return null;
+
+  return (
+    <div className="h-10 flex items-end gap-[1px] bg-black/20 rounded-lg p-1 min-w-[100px] max-w-[150px] overflow-hidden shrink-0">
+      {flattenedIntervals.map((interval, idx) => {
+        const zoneNum = parseInt(interval.zone);
+        const zoneColor = ZONES.find(z => z.id === interval.zone)?.color || '#52525b';
+        const widthPercent = (interval.duration / totalDuration) * 100;
+        return (
+          <div 
+            key={idx}
+            style={{ 
+              width: `${widthPercent}%`, 
+              height: `${(zoneNum / 7) * 100}%`,
+              backgroundColor: zoneColor,
+            }}
+            className="rounded-t-[1px]"
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 interface WorkoutListProps {
   workouts: Workout[];
@@ -25,6 +56,11 @@ export function WorkoutList({
 }: WorkoutListProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [workoutToDelete, setWorkoutToDelete] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -77,60 +113,77 @@ export function WorkoutList({
             return acc + (blockDuration * block.repeatCount);
           }, 0);
           const totalMins = Math.floor(totalDuration / 60);
+          const isExpanded = expandedId === workout.id;
 
           return (
             <motion.div
               key={workout.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition-all group"
+              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden hover:border-zinc-700 transition-all group"
             >
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-white mb-1">{workout.name}</h3>
+              <div 
+                onClick={() => toggleExpand(workout.id)}
+                className="p-5 cursor-pointer flex justify-between items-center gap-4"
+              >
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-xl font-semibold text-white mb-1 truncate">{workout.name}</h3>
                   <p className="text-zinc-400 text-sm">{totalMins} minutes • {workout.blocks.length} blocks</p>
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDuplicate(workout.id);
-                    }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
-                    title="Duplicate"
-                  >
-                    <Copy size={18} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit(workout.id);
-                    }}
-                    className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
-                    title="Edit"
-                  >
-                    <Edit2 size={18} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setWorkoutToDelete(workout.id);
-                    }}
-                    className="p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors"
-                    title="Delete"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                <div className="flex items-center gap-3">
+                  <MiniWorkoutGraph workout={workout} />
+                  <ChevronDown 
+                    size={20} 
+                    className={`text-zinc-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} 
+                  />
                 </div>
               </div>
+
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-5 pb-5 flex gap-2 border-t border-zinc-800 pt-4">
+                      <button
+                        onClick={() => onEdit(workout.id)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white py-2.5 rounded-lg transition-colors font-medium text-sm"
+                      >
+                        <Edit2 size={16} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => onDuplicate(workout.id)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white py-2.5 rounded-lg transition-colors font-medium text-sm"
+                      >
+                        <Copy size={16} />
+                        <span>Copy</span>
+                      </button>
+                      <button
+                        onClick={() => setWorkoutToDelete(workout.id)}
+                        className="flex-1 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-red-900/30 hover:text-red-400 text-white py-2.5 rounded-lg transition-colors font-medium text-sm"
+                      >
+                        <Trash2 size={16} />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
-              <button
-                onClick={() => onSelect(workout.id)}
-                className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-lg transition-colors font-semibold"
-              >
-                <Play size={20} fill="currentColor" />
-                <span>Start Workout</span>
-              </button>
+              <div className="px-5 pb-5">
+                <button
+                  onClick={() => onSelect(workout.id)}
+                  className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-lg transition-colors font-semibold"
+                >
+                  <Play size={20} fill="currentColor" />
+                  <span>Start Workout</span>
+                </button>
+              </div>
             </motion.div>
           );
         })}

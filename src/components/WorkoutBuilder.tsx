@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Workout, Block, Interval } from '../types';
 import { generateId, formatTime, parseTime } from '../lib/utils';
 import { ZONES, CADENCE_OPTIONS } from '../constants';
-import { Plus, Trash2, Copy, ChevronUp, ChevronDown, Save, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
-import { motion, Reorder, useDragControls } from 'motion/react';
+import { Plus, Trash2, Copy, ChevronUp, ChevronDown, Save, ChevronLeft, ChevronRight, GripVertical, Check, ListOrdered } from 'lucide-react';
+import { motion, Reorder, useDragControls, AnimatePresence } from 'motion/react';
 
 interface WorkoutBuilderProps {
   workout: Workout;
@@ -12,10 +12,11 @@ interface WorkoutBuilderProps {
 }
 
 interface BlockItemProps {
-  key: string;
+  key?: string;
   block: Block;
   bIdx: number;
   isExpanded: boolean;
+  isReorderMode: boolean;
   blockDuration: number;
   onToggle: () => void;
   onDuplicate: () => void;
@@ -27,8 +28,62 @@ interface BlockItemProps {
   addInterval: () => void;
 }
 
+function ZoneSelect({ value, onChange }: { value: string, onChange: (val: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedZone = ZONES.find(z => z.id === value);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="bg-zinc-800 text-white rounded-lg px-3 py-2 border border-zinc-700 focus:border-blue-500 focus:outline-none w-full text-sm h-[42px] flex items-center justify-between transition-all"
+        style={{ color: selectedZone?.color }}
+      >
+        <span className="truncate font-medium">
+          {selectedZone ? `${selectedZone.label}: ${selectedZone.value}` : 'Select Zone'}
+        </span>
+        <ChevronDown size={16} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <div 
+              className="fixed inset-0 z-[100]" 
+              onClick={() => setIsOpen(false)} 
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              className="absolute left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-[110] overflow-y-auto max-h-[60vh] py-1"
+            >
+              {ZONES.map((z) => (
+                <button
+                  key={z.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(z.id);
+                    setIsOpen(false);
+                  }}
+                  className="w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-800 transition-colors flex items-center justify-between group"
+                  style={{ color: z.color }}
+                >
+                  <span className="font-medium">{z.label}: {z.value}</span>
+                  {value === z.id && <Check size={14} className="text-blue-500" />}
+                </button>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function BlockItem({ 
-  block, bIdx, isExpanded, blockDuration, onToggle, onDuplicate, onDelete, 
+  block, bIdx, isExpanded, isReorderMode, blockDuration, onToggle, onDuplicate, onDelete, 
   updateBlock, updateInterval, deleteInterval, duplicateInterval, addInterval 
 }: BlockItemProps) {
   const controls = useDragControls();
@@ -50,23 +105,25 @@ function BlockItem({
       value={block} 
       dragListener={false} 
       dragControls={controls}
-      className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden touch-none"
+      className="bg-zinc-900 border border-zinc-800 rounded-2xl"
       whileDrag={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.5)" }}
     >
       {/* Block Header */}
       <div 
         onClick={onToggle}
-        className={`p-4 flex items-center justify-between cursor-pointer transition-colors border-l-4 ${borderClass} ${
-          isExpanded ? 'bg-zinc-800 border-b border-zinc-700' : 'bg-zinc-800/50 hover:bg-zinc-800'
+        className={`p-4 flex items-center justify-between cursor-pointer transition-colors border-l-4 rounded-t-2xl ${borderClass} ${
+          isExpanded ? 'bg-zinc-800 border-b border-zinc-700' : 'bg-zinc-800/50 hover:bg-zinc-800 rounded-b-2xl'
         }`}
       >
         <div className="flex items-center gap-4">
-          <div 
-            className="p-1 cursor-grab active:cursor-grabbing text-zinc-500 hover:text-white"
-            onPointerDown={(e) => controls.start(e)}
-          >
-            <GripVertical size={20} />
-          </div>
+          {isReorderMode && (
+            <div 
+              className="p-1 cursor-grab active:cursor-grabbing text-blue-500 hover:text-blue-400 touch-none"
+              onPointerDown={(e) => controls.start(e)}
+            >
+              <GripVertical size={20} />
+            </div>
+          )}
           <div className="flex items-center gap-1">
             {isExpanded ? <ChevronDown size={20} className="text-zinc-400" /> : <ChevronRight size={20} className="text-zinc-400" />}
             <span className="text-white font-bold">BLOCK {bIdx + 1}</span>
@@ -131,11 +188,8 @@ function BlockItem({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="text-zinc-500 text-xs uppercase tracking-wider font-semibold">
-                  <th className="pb-3 pl-2 w-[30%]">Name</th>
-                  <th className="pb-3 w-[15%]">Duration</th>
-                  <th className="pb-3 w-[25%]">Zone</th>
-                  <th className="pb-3 w-[15%]">Cadence</th>
-                  <th className="pb-3 w-[15%] text-right pr-2">Actions</th>
+                  <th className="pb-3 pl-2 w-[40%]">Duration</th>
+                  <th className="pb-3 w-[60%]">Zone</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -146,59 +200,16 @@ function BlockItem({
                       <td className="py-3 pl-2 border-l-4" style={{ borderLeftColor: zoneColor }}>
                         <input
                           type="text"
-                          value={interval.name}
-                          onChange={(e) => updateInterval(interval.id, { name: e.target.value })}
-                          className="bg-transparent text-white focus:outline-none border-b border-transparent focus:border-blue-500 w-full text-lg"
-                          placeholder="Interval Name"
-                        />
-                      </td>
-                      <td className="py-3">
-                        <input
-                          type="text"
                           defaultValue={formatTime(interval.duration)}
                           onBlur={(e) => updateInterval(interval.id, { duration: parseTime(e.target.value) })}
                           className="bg-transparent text-white focus:outline-none border-b border-transparent focus:border-blue-500 w-full font-mono text-lg"
                         />
                       </td>
                       <td className="py-3">
-                        <select
+                        <ZoneSelect
                           value={interval.zone}
-                          onChange={(e) => updateInterval(interval.id, { zone: e.target.value })}
-                          className="bg-zinc-800 text-white rounded px-2 py-1 border border-zinc-700 focus:border-blue-500 focus:outline-none w-full text-sm"
-                        >
-                          {ZONES.map(z => (
-                            <option key={z.id} value={z.id} style={{ color: z.color }}>
-                              ■ {z.label}: {z.value}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-3">
-                        <select
-                          value={interval.cadence}
-                          onChange={(e) => updateInterval(interval.id, { cadence: e.target.value })}
-                          className="bg-zinc-800 text-white rounded px-2 py-1 border border-zinc-700 focus:border-blue-500 focus:outline-none w-full text-sm"
-                        >
-                          {CADENCE_OPTIONS.map(c => (
-                            <option key={c} value={c}>{c === 'Any' ? 'Any' : `${c} RPM`}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-3 text-right pr-2">
-                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => duplicateInterval(interval.id)}
-                            className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-700 rounded transition-colors"
-                          >
-                            <Copy size={16} />
-                          </button>
-                          <button
-                            onClick={() => deleteInterval(interval.id)}
-                            className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-700 rounded transition-colors"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                          onChange={(val) => updateInterval(interval.id, { zone: val })}
+                        />
                       </td>
                     </tr>
                   );
@@ -209,77 +220,26 @@ function BlockItem({
 
           {/* Mobile Card View */}
           <div className="md:hidden space-y-4">
-            {block.intervals.map((interval, iIdx) => {
+            {block.intervals.map((interval) => {
               const zoneColor = ZONES.find(z => z.id === interval.zone)?.color || '#52525b';
               return (
                 <div key={interval.id} className="bg-zinc-800/30 rounded-xl p-4 border border-zinc-800 relative group border-l-4" style={{ borderLeftColor: zoneColor }}>
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-zinc-600 font-mono text-xs">#{iIdx + 1}</span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => duplicateInterval(interval.id)}
-                        className="p-2 text-zinc-500 hover:text-white bg-zinc-800 rounded-lg"
-                      >
-                        <Copy size={16} />
-                      </button>
-                      <button
-                        onClick={() => deleteInterval(interval.id)}
-                        className="p-2 text-zinc-500 hover:text-red-400 bg-zinc-800 rounded-lg"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                  
                   <div className="space-y-4">
                     <div>
-                      <label className="text-zinc-500 text-[10px] uppercase font-bold mb-1 block">Name</label>
+                      <label className="text-zinc-500 text-[10px] uppercase font-bold mb-1 block">Duration</label>
                       <input
                         type="text"
-                        value={interval.name}
-                        onChange={(e) => updateInterval(interval.id, { name: e.target.value })}
-                        className="bg-zinc-800 text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-blue-500 focus:outline-none w-full text-base"
-                        placeholder="Interval Name"
+                        defaultValue={formatTime(interval.duration)}
+                        onBlur={(e) => updateInterval(interval.id, { duration: parseTime(e.target.value) })}
+                        className="bg-zinc-800 text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-blue-500 focus:outline-none w-full font-mono text-base"
                       />
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-zinc-500 text-[10px] uppercase font-bold mb-1 block">Duration</label>
-                        <input
-                          type="text"
-                          defaultValue={formatTime(interval.duration)}
-                          onBlur={(e) => updateInterval(interval.id, { duration: parseTime(e.target.value) })}
-                          className="bg-zinc-800 text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-blue-500 focus:outline-none w-full font-mono text-base"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-zinc-500 text-[10px] uppercase font-bold mb-1 block">Cadence</label>
-                        <select
-                          value={interval.cadence}
-                          onChange={(e) => updateInterval(interval.id, { cadence: e.target.value })}
-                          className="bg-zinc-800 text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-blue-500 focus:outline-none w-full text-sm h-[42px]"
-                        >
-                          {CADENCE_OPTIONS.map(c => (
-                            <option key={c} value={c}>{c === 'Any' ? 'Any' : `${c} RPM`}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
                     <div>
                       <label className="text-zinc-500 text-[10px] uppercase font-bold mb-1 block">Zone</label>
-                      <select
+                      <ZoneSelect
                         value={interval.zone}
-                        onChange={(e) => updateInterval(interval.id, { zone: e.target.value })}
-                        className="bg-zinc-800 text-white px-3 py-2 rounded-lg border border-zinc-700 focus:border-blue-500 focus:outline-none w-full text-sm h-[42px]"
-                      >
-                        {ZONES.map(z => (
-                          <option key={z.id} value={z.id} style={{ color: z.color }}>
-                            ■ {z.label}: {z.value}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => updateInterval(interval.id, { zone: val })}
+                      />
                     </div>
                   </div>
                 </div>
@@ -302,6 +262,7 @@ function BlockItem({
 export function WorkoutBuilder({ workout: initialWorkout, onSave, onCancel }: WorkoutBuilderProps) {
   const [workout, setWorkout] = useState<Workout>(JSON.parse(JSON.stringify(initialWorkout)));
   const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
+  const [isReorderMode, setIsReorderMode] = useState(false);
 
   const updateWorkoutName = (name: string) => {
     setWorkout({ ...workout, name });
@@ -415,6 +376,21 @@ export function WorkoutBuilder({ workout: initialWorkout, onSave, onCancel }: Wo
         </button>
       </header>
 
+      <div className="bg-zinc-900/50 border-b border-zinc-800 px-4 py-2 flex justify-between items-center bg-zinc-950">
+        <span className="text-zinc-500 text-xs font-bold uppercase tracking-wider">Workout Structure</span>
+        <button
+          onClick={() => setIsReorderMode(!isReorderMode)}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            isReorderMode 
+              ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/30' 
+              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <ListOrdered size={14} />
+          {isReorderMode ? 'DONE REORDERING' : 'REORDER BLOCKS'}
+        </button>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-4 pb-24">
         <div className="max-w-6xl mx-auto">
           <Reorder.Group 
@@ -433,6 +409,7 @@ export function WorkoutBuilder({ workout: initialWorkout, onSave, onCancel }: Wo
                   block={block}
                   bIdx={bIdx}
                   isExpanded={isExpanded}
+                  isReorderMode={isReorderMode}
                   blockDuration={blockDuration}
                   onToggle={() => setExpandedBlockId(isExpanded ? null : block.id)}
                   onDuplicate={() => duplicateBlock(block.id)}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorkouts } from './hooks/useWorkouts';
 import { WorkoutList } from './components/WorkoutList';
 import { WorkoutBuilder } from './components/WorkoutBuilder';
@@ -17,6 +17,44 @@ export default function App() {
   const { workouts, addWorkout, updateWorkout, deleteWorkout, duplicateWorkout, importWorkout } = useWorkouts();
   const [currentView, setCurrentView] = useState<View>('list');
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null);
+
+  // Handle Android Back Button / Browser Back
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (currentView !== 'list') {
+        const message = currentView === 'player' 
+          ? 'End workout in progress? Your progress will be lost.' 
+          : 'Discard unsaved changes?';
+        
+        if (window.confirm(message)) {
+          setCurrentView('list');
+          setActiveWorkoutId(null);
+        } else {
+          // If they cancel, we MUST push the state back so the NEXT back button still triggers this
+          window.history.pushState({ view: currentView, time: Date.now() }, '');
+        }
+      }
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (currentView !== 'list') {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    if (currentView !== 'list') {
+      window.history.pushState({ view: currentView, time: Date.now() }, '');
+      window.addEventListener('popstate', handlePopState);
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [currentView]);
 
   const activeWorkout = workouts.find(w => w.id === activeWorkoutId) || null;
 

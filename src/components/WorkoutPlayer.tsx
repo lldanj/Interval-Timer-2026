@@ -3,7 +3,7 @@ import { Workout, FlattenedInterval } from '../types';
 import { useWorkoutTimer } from '../hooks/useWorkoutTimer';
 import { formatTime } from '../lib/utils';
 import { ZONES } from '../constants';
-import { Play, Pause, Square, ChevronRight } from 'lucide-react';
+import { Play, Pause, Square, ChevronRight, Bell, BellOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface WorkoutPlayerProps {
@@ -31,7 +31,31 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [shownMilestones, setShownMilestones] = useState<Set<number>>(new Set());
   const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const lastZoneRef = useRef<string | null>(null);
   const wakeLockRef = useRef<any>(null);
+
+  // Request notification permission
+  useEffect(() => {
+    if (notificationsEnabled && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [notificationsEnabled]);
+
+  // Zone change notification
+  useEffect(() => {
+    if (notificationsEnabled && currentInterval && Notification.permission === 'granted') {
+      if (lastZoneRef.current !== null && lastZoneRef.current !== currentInterval.zone) {
+        const zoneInfo = ZONES.find(z => z.id === currentInterval.zone);
+        new Notification('Zone Change', {
+          body: `Now in ${zoneInfo?.label || 'Zone ' + currentInterval.zone}: ${zoneInfo?.value || ''}`,
+          icon: '/favicon.ico', // or any app icon
+          silent: true, // as requested "No vibration necessary"
+        });
+      }
+      lastZoneRef.current = currentInterval.zone;
+    }
+  }, [currentInterval, notificationsEnabled]);
 
   useEffect(() => {
     const requestWakeLock = async () => {
@@ -287,6 +311,13 @@ export function WorkoutPlayer({ workout, onClose }: WorkoutPlayerProps) {
           </div>
 
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+              className={`p-3 rounded-full transition-all ${notificationsEnabled ? 'bg-blue-600/20 text-blue-400' : 'bg-zinc-800 text-zinc-500'}`}
+              title={notificationsEnabled ? 'Notifications ON' : 'Notifications OFF'}
+            >
+              {notificationsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
+            </button>
             <button
               onClick={() => {
                 pauseWorkout();
